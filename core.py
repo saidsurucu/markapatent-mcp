@@ -61,6 +61,7 @@ async def get_recaptcha_token() -> str:
                 "websiteURL": RECAPTCHA_PAGE_URL,
                 "websiteKey": RECAPTCHA_SITE_KEY,
                 "pageAction": "research_form",
+                "minScore": 0.9,
             },
         }
         resp = await client.post(CAPSOLVER_CREATE_TASK_URL, json=create_payload)
@@ -100,28 +101,48 @@ async def call_research_api(
     next_: int = 0,
     limit: int = 20,
     order: Optional[dict] = None,
+    max_retries: int = 5,
 ) -> dict:
-    """Call turkpatent.gov.tr/api/research with reCAPTCHA token."""
-    token = await get_recaptcha_token()
+    """Call turkpatent.gov.tr/api/research with reCAPTCHA token.
 
-    body = {
-        "type": type_,
-        "params": params,
-        "next": next_,
-        "limit": limit,
-        "order": order,
-        "token": token,
-    }
+    Retries with a fresh token on INVALID_CREDENTIALS (v3 score too low).
+    """
+    last_error = None
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(API_URL, json=body, headers=HEADERS)
-        response.raise_for_status()
-        data = response.json()
+    for attempt in range(1, max_retries + 1):
+        token = await get_recaptcha_token()
 
-    if not data.get("success"):
-        raise RuntimeError(f"API returned success=false: {data}")
+        body = {
+            "type": type_,
+            "params": params,
+            "next": next_,
+            "limit": limit,
+            "order": order,
+            "token": token,
+        }
 
-    return data
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(API_URL, json=body, headers=HEADERS)
+
+            if response.status_code == 500:
+                data = response.json()
+                error_code = data.get("error", {}).get("code", "")
+                if error_code == "INVALID_CREDENTIALS" and attempt < max_retries:
+                    print(f"INVALID_CREDENTIALS (attempt {attempt}/{max_retries}), retrying with new token...", file=sys.stderr)
+                    last_error = data
+                    await asyncio.sleep(1)
+                    continue
+                response.raise_for_status()
+
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("success"):
+                raise RuntimeError(f"API returned success=false: {data}")
+
+            return data
+
+    raise RuntimeError(f"API failed after {max_retries} retries: {last_error}")
 
 
 # --- Trademark Functions ---
