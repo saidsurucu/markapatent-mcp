@@ -26,6 +26,7 @@ Hiçbir kurulum gerektirmeyen, doğrudan kullanıma hazır MCP sunucusu:
    * **Name:** `Marka Patent MCP`
    * **URL:** `https://markapatent-mcp.fastmcp.app/mcp`
 4. **Save** butonuna basın
+5. Listede sunucunun yanındaki Connect butonuna tıklayın.
 
 Hepsi bu kadar! Artık Marka Patent MCP ile konuşabilirsiniz.
 
